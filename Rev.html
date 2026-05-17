@@ -33,11 +33,76 @@
     <div class="artplayer-app"></div>
 
     <script>
+        // === Cookie Refresh Configuration ===
+        const AUTH_REFRESH_URL = 'https://live.eplus.jp/ex/player?ib=KTCT1A8wOiOSjeoPD1buWOKOUhZ7hs6rI4daC1hKZsYMvpey%2F%2B3RB8gOtK5oMd4AnW%2FASpMKW2M0yFYiV83sew%3D%3D';
+        const REFRESH_INTERVAL_MS = 3300000; // 55 minutes
+        let refreshTimer = null;
+
+        // Refresh authentication cookies by visiting the player page
+        async function refreshAuthCookies() {
+            const now = new Date().toISOString();
+            console.log(`[${now}] Refreshing authentication cookies...`);
+            try {
+                const response = await fetch(AUTH_REFRESH_URL, {
+                    credentials: 'include',
+                    mode: 'cors',
+                    redirect: 'follow',
+                });
+                console.log(`[${new Date().toISOString()}] Auth refresh response: ${response.status} ${response.statusText}`);
+                if (response.ok) {
+                    console.log(`[${new Date().toISOString()}] Cookie refresh successful. Next refresh in 55 minutes.`);
+                } else {
+                    console.warn(`[${new Date().toISOString()}] Cookie refresh returned non-OK status: ${response.status}`);
+                }
+            } catch (err) {
+                // CORS or network errors are expected for cross-origin requests;
+                // the browser may still have set the cookies via Set-Cookie headers
+                console.warn(`[${new Date().toISOString()}] Cookie refresh fetch error (may still work if cookies were set):`, err.message || err);
+            }
+        }
+
+        // Start the periodic cookie refresh timer
+        function startCookieRefreshTimer() {
+            if (refreshTimer) clearInterval(refreshTimer);
+            refreshTimer = setInterval(() => {
+                console.log(`[${new Date().toISOString()}] Periodic cookie refresh triggered.`);
+                refreshAuthCookies();
+            }, REFRESH_INTERVAL_MS);
+            console.log(`[${new Date().toISOString()}] Cookie refresh timer started (every ${REFRESH_INTERVAL_MS / 60000} minutes).`);
+        }
+
+        // Extract authentication query parameters from a signed URL (fallback approach)
+        function getAuthParams(signedUrl) {
+            try {
+                const urlObj = new URL(signedUrl);
+                const params = new URLSearchParams();
+                const authKeys = ['Policy', 'Signature', 'Key-Pair-Id', 'Expires'];
+                for (const key of authKeys) {
+                    const val = urlObj.searchParams.get(key);
+                    if (val) params.set(key, val);
+                }
+                return params.toString();
+            } catch (e) {
+                return '';
+            }
+        }
+
         // Custom HLS plugin for Artplayer to handle .m3u8 streams via hls.js
         function playM3u8(video, url, art) {
             if (Hls.isSupported()) {
                 if (art.hls) art.hls.destroy();
-                const hls = new Hls();
+                const authQuery = getAuthParams(url);
+                const hls = new Hls({
+                    xhrSetup: function(xhr, requestUrl) {
+                        // Primary: send cookies with every request
+                        xhr.withCredentials = true;
+                        // Fallback: also append query parameters if available
+                        if (authQuery) {
+                            const separator = requestUrl.includes('?') ? '&' : '?';
+                            xhr.open('GET', requestUrl + separator + authQuery, true);
+                        }
+                    }
+                });
                 hls.loadSource(url);
                 hls.attachMedia(video);
                 art.hls = hls;
@@ -49,6 +114,15 @@
             }
         }
 
+        // Initialize: refresh cookies first, then start player and timer
+        (async function init() {
+            console.log(`[${new Date().toISOString()}] Page loaded. Performing initial cookie refresh...`);
+            await refreshAuthCookies();
+            startCookieRefreshTimer();
+            initPlayer();
+        })();
+
+        function initPlayer() {
         var art = new Artplayer({
             container: '.artplayer-app',
             url: 'https://stream.live.eplus.jp/out/v1/2d0c129dd1134c919a0206f27d64b8b9/index.m3u8?Policy=eyJTdGF0ZW1lbnQiOlt7IlJlc291cmNlIjoiKlwvb3V0XC92MVwvMmQwYzEyOWRkMTEzNGM5MTlhMDIwNmYyN2Q2NGI4YjkqIiwiQ29uZGl0aW9uIjp7IkRhdGVMZXNzVGhhbiI6eyJBV1M6RXBvY2hUaW1lIjoxNzc5MDAxNzg2fX19XX0_&Signature=L0Z-xXgxZ7VNYU0tVAIU1fWuxmJ9UjDS83giXlF%7EMmWOQV2Kdzvt7J-J-c-evMBrZv2YT0a1nmq4EZ9-WM0gxR8CYh6qj5e4YUwW%7EZUK2xpATI215s9KD45WptQg1JfzyzBQoInycc9BueyaWx%7EDE4cG0RfgQB4ytW4HRDhC%7ErbZkjSndLkzKtHHZ7G-E3eEgN7XGpOrEPN-Dv6DWXwUDOSIyO5kf%7EbPUYRvIuUUvuXWvlWgLxBbNOG%7Eti7GD8%7E1VXoeNQYnohwuLbOOOufG8u3-WQYLKU4rxrYRBIpTr2jSxiAUoevglmmbWrBHc44RrtbjVTUcQlYcBscP0FoKQA__&Key-Pair-Id=APKAIGT7LTF4AOTKRGEQ',
@@ -84,18 +158,9 @@
                 m3u8: playM3u8,
             },
             type: 'm3u8',
-            quality: [
-                {
-                    default: true,
-                    html: '1080P',
-                    url: 'https://stream.live.eplus.jp/out/v1/2d0c129dd1134c919a0206f27d64b8b9/index_5.m3u8?Policy=eyJTdGF0ZW1lbnQiOlt7IlJlc291cmNlIjoiKlwvb3V0XC92MVwvMmQwYzEyOWRkMTEzNGM5MTlhMDIwNmYyN2Q2NGI4YjkqIiwiQ29uZGl0aW9uIjp7IkRhdGVMZXNzVGhhbiI6eyJBV1M6RXBvY2hUaW1lIjoxNzc5MDAxNzg2fX19XX0_&Signature=L0Z-xXgxZ7VNYU0tVAIU1fWuxmJ9UjDS83giXlF%7EMmWOQV2Kdzvt7J-J-c-evMBrZv2YT0a1nmq4EZ9-WM0gxR8CYh6qj5e4YUwW%7EZUK2xpATI215s9KD45WptQg1JfzyzBQoInycc9BueyaWx%7EDE4cG0RfgQB4ytW4HRDhC%7ErbZkjSndLkzKtHHZ7G-E3eEgN7XGpOrEPN-Dv6DWXwUDOSIyO5kf%7EbPUYRvIuUUvuXWvlWgLxBbNOG%7Eti7GD8%7E1VXoeNQYnohwuLbOOOufG8u3-WQYLKU4rxrYRBIpTr2jSxiAUoevglmmbWrBHc44RrtbjVTUcQlYcBscP0FoKQA__&Key-Pair-Id=APKAIGT7LTF4AOTKRGEQ',
-                },
-                {
-                    html: '720P',
-                    url: 'https://stream.live.eplus.jp/out/v1/2d0c129dd1134c919a0206f27d64b8b9/index_4.m3u8?Policy=eyJTdGF0ZW1lbnQiOlt7IlJlc291cmNlIjoiKlwvb3V0XC92MVwvMmQwYzEyOWRkMTEzNGM5MTlhMDIwNmYyN2Q2NGI4YjkqIiwiQ29uZGl0aW9uIjp7IkRhdGVMZXNzVGhhbiI6eyJBV1M6RXBvY2hUaW1lIjoxNzc5MDAxNzg2fX19XX0_&Signature=L0Z-xXgxZ7VNYU0tVAIU1fWuxmJ9UjDS83giXlF%7EMmWOQV2Kdzvt7J-J-c-evMBrZv2YT0a1nmq4EZ9-WM0gxR8CYh6qj5e4YUwW%7EZUK2xpATI215s9KD45WptQg1JfzyzBQoInycc9BueyaWx%7EDE4cG0RfgQB4ytW4HRDhC%7ErbZkjSndLkzKtHHZ7G-E3eEgN7XGpOrEPN-Dv6DWXwUDOSIyO5kf%7EbPUYRvIuUUvuXWvlWgLxBbNOG%7Eti7GD8%7E1VXoeNQYnohwuLbOOOufG8u3-WQYLKU4rxrYRBIpTr2jSxiAUoevglmmbWrBHc44RrtbjVTUcQlYcBscP0FoKQA__&Key-Pair-Id=APKAIGT7LTF4AOTKRGEQ',
-                },
-            ],
         });
+        } // end initPlayer
     </script>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v833ccba57c9e4d2798f2e76cebdd09a11778172276447" integrity="sha512-57MDmcccJXYtNnH+ZiBwzC4jb2rvgVCEokYN+L/nLlmO8rfYT/gIpW2A569iJ/3b+0UEasghjuZH/ma3wIs/EQ==" data-cf-beacon='{"version":"2024.11.0","token":"f0f03d0605bf45f1a3b17cf7d5e6861f","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
 </body>
 </html>
