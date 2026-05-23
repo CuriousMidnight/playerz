@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>eplus Live Stream Player</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #000;
+            color: #e0e0e0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            min-height: 100vh;
+        }
+
+        /* ── Player Section ── */
+        .player-wrapper {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px 16px 0;
+        }
+        .player-container {
+            width: 100%;
+            aspect-ratio: 16 / 9;
+            background: #111;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        /* ── URL Editor Section ── */
+        .url-editor {
+            max-width: 1200px;
+            margin: 24px auto 0;
+            padding: 0 16px;
+        }
+        .url-editor h3 {
+            color: #23ade5;
+            font-size: 16px;
+            margin-bottom: 12px;
+        }
+        .param-grid {
+            display: grid;
+            grid-template-columns: 120px 1fr;
+            gap: 8px 12px;
+            align-items: center;
+        }
+        .param-grid label {
+            font-size: 13px;
+            color: #aaa;
+            text-align: right;
+        }
+        .param-grid input, .param-grid textarea {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            color: #e0e0e0;
+            padding: 8px 10px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            width: 100%;
+        }
+        .param-grid textarea {
+            resize: vertical;
+            min-height: 60px;
+        }
+        .param-grid input:focus, .param-grid textarea:focus {
+            border-color: #23ade5;
+            outline: none;
+        }
+        .btn-row {
+            margin-top: 12px;
+            display: flex;
+            gap: 10px;
+        }
+        .btn {
+            background: #23ade5;
+            color: #fff;
+            border: none;
+            padding: 10px 24px;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        .btn:hover { background: #1b8ebf; }
+        .btn-secondary {
+            background: #333;
+            color: #ccc;
+        }
+        .btn-secondary:hover { background: #444; }
+        .status-msg {
+            margin-top: 8px;
+            font-size: 12px;
+            color: #6c6;
+            min-height: 18px;
+        }
+
+        /* ── Instructions Section ── */
+        .instructions {
+            max-width: 1200px;
+            margin: 32px auto;
+            padding: 0 16px 40px;
+        }
+        .instructions h3 {
+            color: #23ade5;
+            font-size: 18px;
+            margin-bottom: 16px;
+            border-bottom: 1px solid #222;
+            padding-bottom: 8px;
+        }
+        .instructions h4 {
+            color: #fff;
+            font-size: 15px;
+            margin: 20px 0 8px;
+        }
+        .instructions p, .instructions li {
+            font-size: 14px;
+            line-height: 1.7;
+            color: #bbb;
+        }
+        .instructions ol, .instructions ul {
+            padding-left: 24px;
+            margin-bottom: 12px;
+        }
+        .instructions code {
+            background: #1a1a1a;
+            color: #23ade5;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 13px;
+        }
+        .instructions pre {
+            background: #111;
+            border: 1px solid #333;
+            border-radius: 6px;
+            padding: 14px;
+            overflow-x: auto;
+            font-size: 12px;
+            color: #ccc;
+            margin: 10px 0;
+        }
+        .warning-box {
+            background: #2a1a00;
+            border: 1px solid #f90;
+            border-radius: 6px;
+            padding: 14px 16px;
+            margin: 16px 0;
+        }
+        .warning-box strong { color: #f90; }
+        .warning-box p { color: #dda; margin: 0; }
+        .step-box {
+            background: #0a1a2a;
+            border: 1px solid #23ade5;
+            border-radius: 6px;
+            padding: 16px;
+            margin: 12px 0;
+        }
+        .step-box .step-num {
+            display: inline-block;
+            background: #23ade5;
+            color: #000;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 24px;
+            font-weight: bold;
+            font-size: 13px;
+            margin-right: 8px;
+        }
+        .step-box p { margin-top: 8px; }
+
+        .screenshot-placeholder {
+            background: #1a1a2a;
+            border: 1px dashed #445;
+            border-radius: 6px;
+            padding: 20px;
+            text-align: center;
+            color: #667;
+            font-size: 13px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+
+<!-- ════════════════════════════════════════════════ -->
+<!-- Player                                          -->
+<!-- ════════════════════════════════════════════════ -->
+<div class="player-wrapper">
+    <div class="player-container" id="artplayer-app"></div>
+</div>
+
+<!-- ════════════════════════════════════════════════ -->
+<!-- URL Parameter Editor                            -->
+<!-- ════════════════════════════════════════════════ -->
+<div class="url-editor">
+    <h3>🔗 Stream URL Settings</h3>
+    <div class="param-grid">
+        <label for="baseUrl">Base URL</label>
+        <input type="text" id="baseUrl"
+               value="https://stream.live.eplus.jp/out/v1/4f1652230c9d41cbb6bd3b5867a2d57f/index.m3u8" />
+
+        <label for="paramPolicy">Policy</label>
+        <textarea id="paramPolicy">eyJTdGF0ZW1lbnQiOlt7IlJlc291cmNlIjoiKlwvb3V0XC92MVwvNGYxNjUyMjMwYzlkNDFjYmI2YmQzYjU4NjdhMmQ1N2YqIiwiQ29uZGl0aW9uIjp7IkRhdGVMZXNzVGhhbiI6eyJBV1M6RXBvY2hUaW1lIjoxNzc5NTA2MDE2fX19XX0_</textarea>
+
+        <label for="paramSignature">Signature</label>
+        <textarea id="paramSignature">NFDwC2-nsmMDuQgqpjFeaqHdDiYlvBX11a5oebh9cSQuWqMifLwAtsLPDOv-9yVY51Zt0Rp7zcwWqERFqm8mA6uOfCiiaMoWamZq9cc1amUbusGqciXsqJkknyi9ACHnvLFW2eEAxQaCqtGhAIDGTpubcPsbOT5PZ7csrLglEIg3fBdDhcM-Lvi9HVwogX8ULYMyNP0TUao086a0FjScnZV~-CmrwbFJ4HWTsuanJp6lgU1eOIS0R7Djg3Y55HkV87eFBx~fbB35FKsG0DQ6T-EL9kmeAAmYEUaTpkkAnutK-Z0hRJEMjuMd3G21CUJTGMQH2I76mJNxM-EA1BEQKA__</textarea>
+
+        <label for="paramKeyPairId">Key-Pair-Id</label>
+        <input type="text" id="paramKeyPairId" value="APKAIGT7LTF4AOTKRGEQ" />
+    </div>
+    <div class="btn-row">
+        <button class="btn" onclick="applyUrl()">▶ Apply &amp; Reload Player</button>
+        <button class="btn btn-secondary" onclick="copyFullUrl()">📋 Copy Full URL</button>
+    </div>
+    <div class="status-msg" id="statusMsg"></div>
+</div>
+
+<!-- ════════════════════════════════════════════════ -->
+<!-- Instructions                                    -->
+<!-- ════════════════════════════════════════════════ -->
+<div class="instructions">
+    <h3>📖 How to Use This Player</h3>
+
+    <div class="warning-box">
+        <strong>⚠️ Important:</strong>
+        <p>The CloudFront signed URL expires after approximately <strong>1 hour</strong>.
+           When it expires the stream will stop loading and you must refresh the URL parameters.</p>
+    </div>
+
+    <h4>How to Refresh the URL Parameters</h4>
+
+    <div class="step-box">
+        <span class="step-num">1</span> <strong>Open the eplus player page</strong>
+        <p>Visit the original eplus player page in your browser (Chrome recommended):<br/>
+           <code>https://live.eplus.jp/ex/player?ib=...</code><br/>
+           (Use the same ticket URL you originally received.)</p>
+    </div>
+
+    <div class="step-box">
+        <span class="step-num">2</span> <strong>Open Browser DevTools → Network tab</strong>
+        <p>Press <code>F12</code> (or <code>Ctrl+Shift+I</code> / <code>Cmd+Option+I</code> on Mac) to open DevTools.<br/>
+           Click the <strong>Network</strong> tab at the top.</p>
+        <div class="screenshot-placeholder">
+            📸 DevTools Network tab — filter by "m3u8" or "index.m3u8"
+        </div>
+    </div>
+
+    <div class="step-box">
+        <span class="step-num">3</span> <strong>Find the .m3u8 request</strong>
+        <p>In the Network tab filter box, type <code>m3u8</code>.<br/>
+           You should see a request to <code>stream.live.eplus.jp</code> with <code>index.m3u8</code>.<br/>
+           Click on it to see the full URL with query parameters.</p>
+        <div class="screenshot-placeholder">
+            📸 Click on the m3u8 request → Headers tab → Request URL
+        </div>
+    </div>
+
+    <div class="step-box">
+        <span class="step-num">4</span> <strong>Copy the three CloudFront parameters</strong>
+        <p>From the request URL, extract these three query parameters:</p>
+        <ul>
+            <li><code>Policy</code> — a long Base64-encoded string</li>
+            <li><code>Signature</code> — a long Base64-encoded string</li>
+            <li><code>Key-Pair-Id</code> — a short alphanumeric ID (e.g., <code>APKAIGT7LTF4AOTKRGEQ</code>)</li>
+        </ul>
+        <p>Tip: Right-click the request → <strong>Copy → Copy URL</strong>, then paste it somewhere to extract the params.</p>
+    </div>
+
+    <div class="step-box">
+        <span class="step-num">5</span> <strong>Paste into the fields above &amp; click "Apply"</strong>
+        <p>Paste each parameter into the corresponding input field in the <strong>Stream URL Settings</strong> section above,
+           then click <strong>▶ Apply &amp; Reload Player</strong>.</p>
+    </div>
+
+    <h4>Alternative: Paste the Full URL</h4>
+    <p>You can also paste the entire signed URL (including query string) directly into the
+       <strong>Base URL</strong> field — the player will use it as-is when the other fields are empty.</p>
+
+    <h4>Extracting Parameters from Cookies (Alternative Method)</h4>
+    <p>CloudFront cookies can also be found in DevTools → <strong>Application</strong> tab → <strong>Cookies</strong>:</p>
+    <ul>
+        <li><code>CloudFront-Policy</code> → paste into <strong>Policy</strong></li>
+        <li><code>CloudFront-Signature</code> → paste into <strong>Signature</strong></li>
+        <li><code>CloudFront-Key-Pair-Id</code> → paste into <strong>Key-Pair-Id</strong></li>
+    </ul>
+    <pre>// Example: reading cookies in DevTools Console
+document.cookie.split(';').forEach(c =&gt; {
+    if (c.includes('CloudFront')) console.log(c.trim());
+});</pre>
+
+    <h4>Troubleshooting</h4>
+    <ul>
+        <li><strong>Stream won't load?</strong> — Check that the URL parameters haven't expired (1-hour limit).</li>
+        <li><strong>Black screen?</strong> — The stream may not be live yet. Wait for the scheduled start time.</li>
+        <li><strong>CORS errors?</strong> — This is expected for cross-origin streams. The player handles this via HLS.js.</li>
+        <li><strong>Quality not switching?</strong> — Click the ⚙️ settings icon in the player controls to select quality.</li>
+    </ul>
+</div>
+
+<!-- ════════════════════════════════════════════════ -->
+<!-- Scripts                                         -->
+<!-- ════════════════════════════════════════════════ -->
+<script src="lib/hls.min.js"></script>
+<script src="lib/artplayer.js"></script>
+<script>
+    // ── Build the full signed URL from form fields ──
+    function buildStreamUrl() {
+        const base = document.getElementById('baseUrl').value.trim();
+        const policy = document.getElementById('paramPolicy').value.trim();
+        const signature = document.getElementById('paramSignature').value.trim();
+        const keyPairId = document.getElementById('paramKeyPairId').value.trim();
+
+        // If base URL already contains query params and other fields are empty, use as-is
+        if (base.includes('?') && !policy && !signature && !keyPairId) {
+            return base;
+        }
+
+        const params = new URLSearchParams();
+        if (policy) params.set('Policy', policy);
+        if (signature) params.set('Signature', signature);
+        if (keyPairId) params.set('Key-Pair-Id', keyPairId);
+
+        const qs = params.toString();
+        return qs ? `${base.split('?')[0]}?${qs}` : base;
+    }
+
+    // ── HLS playback helper for Artplayer ──
+    function playM3u8(video, url, art) {
+        if (Hls.isSupported()) {
+            if (art.hls) art.hls.destroy();
+            const hls = new Hls();
+            hls.loadSource(url);
+            hls.attachMedia(video);
+            art.hls = hls;
+            art.on('destroy', () => hls.destroy());
+        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+            video.src = url;
+        } else {
+            art.notice.show = 'HLS is not supported in this browser';
+        }
+    }
+
+    // ── Current player instance ──
+    let art = null;
+
+    function createPlayer() {
+        const streamUrl = buildStreamUrl();
+
+        if (art) {
+            art.destroy(false);
+        }
+
+        art = new Artplayer({
+            container: '#artplayer-app',
+            url: streamUrl,
+            type: 'm3u8',
+            isLive: true,
+            theme: '#23ade5',
+
+            // Custom icons
+            icons: {
+                loading: '<img src="assets/loading.gif" width="48">',
+                state: '<img src="assets/state.svg" width="64">',
+                indicator: '<img src="assets/indicator.svg" width="14">',
+            },
+
+            // Player features
+            pip: true,
+            autoSize: false,
+            autoMini: true,
+            screenshot: true,
+            setting: true,
+            loop: false,
+            flip: true,
+            playbackRate: true,
+            aspectRatio: true,
+            fullscreen: true,
+            fullscreenWeb: true,
+            subtitleOffset: false,
+            miniProgressBar: true,
+            mutex: true,
+            backdrop: true,
+            playsInline: true,
+            autoPlayback: false,
+            airplay: true,
+            lock: true,
+            fastForward: false,
+            autoOrientation: true,
+            autoPlay: true,
+            muted: true,
+
+            // Quality selector
+            quality: [
+                {
+                    default: true,
+                    html: 'SD 480P',
+                    url: streamUrl,
+                },
+                {
+                    html: 'HD 720P',
+                    url: streamUrl,
+                },
+            ],
+
+            // Custom HLS handler
+            customType: {
+                m3u8: playM3u8,
+            },
+        });
+
+        art.on('ready', () => {
+            console.log('Player ready');
+        });
+
+        art.on('error', (error) => {
+            console.error('Player error:', error);
+        });
+    }
+
+    // ── Apply new URL and reload player ──
+    function applyUrl() {
+        const msg = document.getElementById('statusMsg');
+        msg.textContent = '⏳ Reloading player...';
+        msg.style.color = '#aaa';
+        try {
+            createPlayer();
+            msg.textContent = '✅ Player reloaded with new URL at ' + new Date().toLocaleTimeString();
+            msg.style.color = '#6c6';
+        } catch (e) {
+            msg.textContent = '❌ Error: ' + e.message;
+            msg.style.color = '#f66';
+        }
+    }
+
+    // ── Copy full URL to clipboard ──
+    function copyFullUrl() {
+        const url = buildStreamUrl();
+        navigator.clipboard.writeText(url).then(() => {
+            const msg = document.getElementById('statusMsg');
+            msg.textContent = '📋 Full URL copied to clipboard';
+            msg.style.color = '#6c6';
+        });
+    }
+
+    // ── Initialize on load ──
+    createPlayer();
+</script>
+
+</body>
+</html>
